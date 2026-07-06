@@ -351,7 +351,7 @@ nav button.ativa{color:var(--verde-esc);background:var(--verde-claro)}
   </div>
 
   <button class="bt bt-verde" onclick="salvarPerfil()">Salvar configurações</button>
-  <p class="aviso-info mt14" id="infoVersao">COOPFIN COOPERADO v8.0 · dados guardados apenas neste aparelho.</p>
+  <p class="aviso-info mt14" id="infoVersao">COOPFIN COOPERADO v8.1 · dados guardados apenas neste aparelho.</p>
 </section>
 </main>
 
@@ -839,7 +839,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 </script>
 <script>
 /* ============================================================
-   COOPFIN COOPERADO v8.0 — núcleo
+   COOPFIN COOPERADO v8.1 — núcleo
    Banco local (IndexedDB), utilidades, navegação, perfil, pacientes
    ============================================================ */
 'use strict';
@@ -1689,7 +1689,7 @@ function pdfRodape(doc) {
     doc.setPage(i);
     doc.setDrawColor(215, 224, 236); doc.setLineWidth(0.3); doc.line(15, 288, 195, 288);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(122, 138, 160);
-    doc.text('COOPFIN COOPERADO v8.0 · Registro eletrônico sem rasuras — Res. Cofen 564/2017, art. 36 · Lei 5.764/1971', 15, 292.5);
+    doc.text('COOPFIN COOPERADO v8.1 · Registro eletrônico sem rasuras — Res. Cofen 564/2017, art. 36 · Lei 5.764/1971', 15, 292.5);
     doc.text(`Página ${i} de ${n}`, 195, 292.5, { align: 'right' });
     doc.setTextColor(21, 42, 71);
   }
@@ -1957,7 +1957,7 @@ async function gerarPacote(transmitir) {
   const hashes = registros.map(r => (r.assinatura && r.assinatura.hash_sha256) || '').join('');
   const p = Estado.perfil;
   const pacote = {
-    formato: 'COOPFIN_COOPERADO_PACOTE', versao: '8.0', gerado_em: agoraISO(),
+    formato: 'COOPFIN_COOPERADO_PACOTE', versao: '8.1', gerado_em: agoraISO(),
     cooperado: { nome: p.nome, cpf: p.cpf, categoria: p.categoria, uf: p.uf, coren: p.coren,
                  cooperativa: p.cooperativa, cnpj: p.cnpj },
     total_registros: registros.length,
@@ -1968,14 +1968,16 @@ async function gerarPacote(transmitir) {
   else baixarPacote(pacote, ids);
 }
 function baixarPacote(pacote, ids) {
-  const blob = new Blob([JSON.stringify(pacote)], { type: 'application/json' });
+  /* v8.1: extensão ÚNICA .coopfin + octet-stream — WhatsApp/e-mail/Android
+     cortavam o ".json" do nome e o COOPFIN não reconhecia o arquivo. */
+  const blob = new Blob([JSON.stringify(pacote)], { type: 'application/octet-stream' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'pacote_cooperado_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.coopfin.json';
+  a.download = 'pacote_cooperado_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.coopfin';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   marcarEnviados(ids, false);
-  toast('Pacote baixado. No COOPFIN da cooperativa: Receber do App → Importar arquivo.');
+  toast('Pacote .coopfin baixado. No COOPFIN: Folha de Plantões → Importar do App Cooperado → Importar arquivo.');
 }
 async function transmitirPacote(pacote, ids) {
   const p = Estado.perfil;
