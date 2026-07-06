@@ -351,7 +351,7 @@ nav button.ativa{color:var(--verde-esc);background:var(--verde-claro)}
   </div>
 
   <button class="bt bt-verde" onclick="salvarPerfil()">Salvar configurações</button>
-  <p class="aviso-info mt14" id="infoVersao">COOPFIN COOPERADO v1.1 · dados guardados apenas neste aparelho.</p>
+  <p class="aviso-info mt14" id="infoVersao">COOPFIN COOPERADO v8.0 · dados guardados apenas neste aparelho.</p>
 </section>
 </main>
 
@@ -455,7 +455,7 @@ nav button.ativa{color:var(--verde-esc);background:var(--verde-claro)}
       <svg viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
       Transmitir pela internet ao COOPFIN
     </button>
-    <p class="aviso-info mt14" id="avisoMixed" style="display:none">Este app está aberto em HTTPS e o receptor usa HTTP: o navegador bloqueia o envio direto. Use "Baixar pacote" e importe no COOPFIN, ou abra o app pelo endereço local (http) da cooperativa.</p>
+    <p class="aviso-info mt14" id="avisoMixed" style="display:none">Este app está aberto em HTTPS e o receptor usa HTTP: o navegador bloqueia o envio direto. Solução: no computador da cooperativa, abra Receber do App (Ligar) e acesse aqui o endereço <b>http://IP-do-computador:5878/app/</b> — o envio passa a ser direto, sem bloqueio. Ou use "Baixar pacote" e importe no COOPFIN.</p>
   </div>
 </div>
 
@@ -839,7 +839,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 </script>
 <script>
 /* ============================================================
-   COOPFIN COOPERADO v1.1 — núcleo
+   COOPFIN COOPERADO v8.0 — núcleo
    Banco local (IndexedDB), utilidades, navegação, perfil, pacientes
    ============================================================ */
 'use strict';
@@ -1689,7 +1689,7 @@ function pdfRodape(doc) {
     doc.setPage(i);
     doc.setDrawColor(215, 224, 236); doc.setLineWidth(0.3); doc.line(15, 288, 195, 288);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(122, 138, 160);
-    doc.text('COOPFIN COOPERADO v1.1 · Registro eletrônico sem rasuras — Res. Cofen 564/2017, art. 36 · Lei 5.764/1971', 15, 292.5);
+    doc.text('COOPFIN COOPERADO v8.0 · Registro eletrônico sem rasuras — Res. Cofen 564/2017, art. 36 · Lei 5.764/1971', 15, 292.5);
     doc.text(`Página ${i} de ${n}`, 195, 292.5, { align: 'right' });
     doc.setTextColor(21, 42, 71);
   }
@@ -1913,6 +1913,21 @@ async function gerarPDFProntuario(pacId) {
   } catch (e) { toast('Falha ao gerar o prontuário: ' + e.message); }
 }
 
+/* ---------- v8.0: endereço do receptor ----------
+   Quando o app é aberto pelo endereço http://IP:5878/app/ servido pelo próprio
+   COOPFIN, o envio usa a MESMA ORIGEM (URL relativa) — sem bloqueio de conteúdo
+   misto e sem precisar digitar IP. Em HTTPS o navegador proíbe chamar HTTP. */
+function servidoPeloCOOPFIN() {
+  return location.protocol === 'http:' && !!location.hostname &&
+         location.pathname.indexOf('/app') !== -1;
+}
+function urlReceptor(caminho, host, porta) {
+  if (location.protocol === 'http:' &&
+      (!host || host === location.hostname) &&
+      (!porta || porta === (location.port || '80'))) return caminho; // mesma origem
+  return 'http://' + host + ':' + (porta || '5878') + caminho;
+}
+
 /* ---------- Exportação: pacote e transmissão ---------- */
 async function abrirExportacao() {
   const regs = (await DB.getAll('registros')).filter(r => r.status === 'assinado');
@@ -1942,7 +1957,7 @@ async function gerarPacote(transmitir) {
   const hashes = registros.map(r => (r.assinatura && r.assinatura.hash_sha256) || '').join('');
   const p = Estado.perfil;
   const pacote = {
-    formato: 'COOPFIN_COOPERADO_PACOTE', versao: '1.0', gerado_em: agoraISO(),
+    formato: 'COOPFIN_COOPERADO_PACOTE', versao: '8.0', gerado_em: agoraISO(),
     cooperado: { nome: p.nome, cpf: p.cpf, categoria: p.categoria, uf: p.uf, coren: p.coren,
                  cooperativa: p.cooperativa, cnpj: p.cnpj },
     total_registros: registros.length,
@@ -1964,8 +1979,13 @@ function baixarPacote(pacote, ids) {
 }
 async function transmitirPacote(pacote, ids) {
   const p = Estado.perfil;
-  if (!p.host || !p.pin) { toast('Configure endereço e PIN em Perfil → Transmissão.'); return; }
-  const url = `http://${p.host}:${p.porta || '5878'}/api/pacote`;
+  if (location.protocol === 'https:') {
+    toast('Envio direto bloqueado: o app está em HTTPS e o receptor é HTTP. Abra o app pelo endereço da cooperativa (http://IP:5878/app/) ou use "Baixar pacote".', 6500);
+    return;
+  }
+  if (!p.pin) { toast('Configure o PIN em Perfil → Transmissão.'); return; }
+  if (!p.host && !servidoPeloCOOPFIN()) { toast('Configure endereço e PIN em Perfil → Transmissão.'); return; }
+  const url = urlReceptor('/api/pacote', p.host || location.hostname, p.porta || location.port || '5878');
   try {
     const resp = await fetch(url, {
       method: 'POST',
@@ -1994,10 +2014,15 @@ async function marcarEnviados(ids, enviado) {
   renderRegistros();
 }
 async function testarConexao() {
-  const host = $('cfgHost').value.trim(), porta = $('cfgPorta').value.trim() || '5878';
+  let host = $('cfgHost').value.trim(), porta = $('cfgPorta').value.trim() || '5878';
+  if (location.protocol === 'https:') {
+    toast('Teste bloqueado: o app está em HTTPS e o receptor é HTTP. Abra o app por http://IP:5878/app/ na Wi-Fi da cooperativa.', 6000);
+    return;
+  }
+  if (!host && servidoPeloCOOPFIN()) { host = location.hostname; porta = location.port || porta; }
   if (!host) { toast('Informe o endereço/IP do computador da cooperativa.'); return; }
   try {
-    const r = await fetch(`http://${host}:${porta}/ping`);
+    const r = await fetch(urlReceptor('/ping', host, porta));
     const j = await r.json();
     toast(j && j.app ? ('Conectado: ' + j.app + ' v' + j.versao) : 'Respondeu, mas não parece ser o receptor COOPFIN.');
   } catch (e) {
@@ -2012,12 +2037,19 @@ window.addEventListener('load', async () => {
   try {
     await DB.abrir();
     await carregarPerfil();
+    if (servidoPeloCOOPFIN()) {                       // v8.0: veio de http://IP:5878/app/
+      if (!$('cfgHost').value.trim()) $('cfgHost').value = location.hostname;
+      if (location.port) $('cfgPorta').value = location.port;
+      const p = Estado.perfil || {};
+      if (!p.host) { p.host = location.hostname; p.porta = location.port || '5878'; }
+    }
     await carregarPacientes();
     await carregarPlantao();
     initVoz();
     ['cfgNome', 'cfgUF', 'cfgCoren'].forEach(i => $(i).addEventListener('input', atualizarPreviewCarimbo));
     $('cfgCategoria').addEventListener('change', atualizarPreviewCarimbo);
-    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' ||
+        location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   } catch (e) {
